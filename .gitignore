@@ -1,0 +1,6 @@
+.runtime/
+.staging/
+node_modules/
+*.tmp
+/data/**
+!/data/README.md

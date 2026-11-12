@@ -1,0 +1,9 @@
+{
+  "name": "bench_cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {"bench_cli": "./bench_cli.mjs"},
+  "scripts": {"test": "node --test test/*.test.mjs assembly/test/*.test.mjs", "bootstrap-data": "node scripts/bootstrap-data.mjs"},
+  "engines": {"node": ">=22"}
+}
