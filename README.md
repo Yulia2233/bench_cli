@@ -70,6 +70,8 @@ The project must contain a valid `project.json`, `assembly.ir.json`, selected pa
 
 Defaults locate `cad-code/cad-code-multi`, `cad-code/multi/assemblyeval.py`, and the cad-code Python environment under the configured `BENCH_CAD_CODE_DIR`. Override them with `--cad-code-multi`, `--evaluator`, `--python`, `BENCH_ASSEMBLY_EVALUATOR`, or `BENCH_ASSEMBLY_PYTHON` when needed.
 
+The updated CAD Code assembly controller supplies a bounded context index and pages, then generates a complete source-pose assembly with one grounded reference and a fixed spanning tree. The agent inspects selected candidate relationships and replaces fixed edges only with evidence-supported motion constraints. Use the [assembly guide](assembly/README.md#large-assembly-context-and-static-defaults) for context and archive requirements; the original attempt directory remains necessary for scoring and complete context analysis. Single-solid behavior is unchanged.
+
 ## Tests
 
 ```bash

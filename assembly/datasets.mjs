@@ -147,6 +147,38 @@ export function validateAssemblyInputs({inputsPath,assemblyIr,attemptDir}){
       throw Error(`Invalid stepeval verdict for ${id}`);
   }
   for(const id of expected)if(!seen.has(id))throw Error(`Assembly input is missing unique part ${id}`);
+  // Older attempts have no context index. New attempts archive only declared,
+  // hash-checked context assets, using the same input-path checks as child files.
+  if(inputs.context_index!==undefined){
+    const inputRoot=path.join(attemptDir,'input');
+    const indexPath=regularFile(inputRoot,inputs.context_index,'Assembly context index');
+    const indexHash=fileSha(indexPath);
+    if(inputs.context_index_sha256!==indexHash)throw Error('Assembly context index hash mismatch');
+    if(!Array.isArray(inputs.files))throw Error('Assembly context requires manifest files[]');
+    const roles=new Set(['assembly_context_index','assembly_part_index_page','assembly_occurrence_index_page','assembly_candidate_index_page']);
+    const assets=new Map();
+    for(const entry of inputs.files.filter(file=>roles.has(file?.role))){
+      const asset=regularFile(inputRoot,entry.path,'Assembly context asset');
+      const relative=path.relative(inputRoot,asset);
+      if(assets.has(relative))throw Error('Duplicate assembly context asset: '+relative);
+      const sha256=fileSha(asset);
+      if(entry.sha256!==sha256)throw Error('Assembly context asset hash mismatch: '+relative);
+      assets.set(relative,entry.role);
+      files.push({kind:entry.role,path:path.relative(attemptDir,asset),sha256});
+    }
+    if(assets.get(path.relative(inputRoot,indexPath))!=='assembly_context_index')
+      throw Error('Assembly context index is missing from the file manifest');
+    const index=readJson(indexPath);
+    if(index.schema_version!=='cad-code-assembly-context-index-v1')throw Error('Unsupported assembly context index schema');
+    const pageRoles={parts:'assembly_part_index_page',occurrences:'assembly_occurrence_index_page',candidates:'assembly_candidate_index_page'};
+    for(const [kind,role] of Object.entries(pageRoles)){
+      if(!Array.isArray(index.pages?.[kind]))throw Error('Assembly context index is missing '+kind+' pages');
+      for(const page of index.pages[kind]){
+        const file=regularFile(inputRoot,page,'Assembly context page');
+        if(assets.get(path.relative(inputRoot,file))!==role)throw Error('Assembly context page is missing from the file manifest: '+page);
+      }
+    }
+  }
   return {inputs,files,sha256:fileSha(inputsPath)};
 }
 

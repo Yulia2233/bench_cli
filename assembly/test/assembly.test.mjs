@@ -56,6 +56,19 @@ process.exit(2);
   fs.chmodSync(file,0o700);
 }
 
+function addContext(f){
+  const input=path.join(f.attempt,'input'),manifestPath=path.join(input,'assembly-inputs.json');
+  const manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
+  const page='assembly-index/parts-0000.json',index='assembly-context-index.json';
+  write(path.join(input,page),JSON.stringify({schema_version:'cad-code-assembly-index-page-v1',rows:[{part_id:'part-000'}]}));
+  write(path.join(input,index),JSON.stringify({schema_version:'cad-code-assembly-context-index-v1',pages:{parts:[page],occurrences:[],candidates:[]}}));
+  manifest.context_index=index;manifest.context_index_sha256=fileSha(path.join(input,index));
+  manifest.files=[{path:index,role:'assembly_context_index',sha256:manifest.context_index_sha256},
+    {path:page,role:'assembly_part_index_page',sha256:fileSha(path.join(input,page))}];
+  write(manifestPath,JSON.stringify(manifest));
+  return {input,manifestPath,manifest,index,page};
+}
+
 test('assembly IR validation enforces unique parts, v6.3, instance references and placements',t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'bench-assembly-ir-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const f=fixture(root),project=loadAssemblyProject(f.project);
@@ -153,4 +166,29 @@ test('assembly runner refuses to persist a candidate containing a secret from th
   assert.match(run.error,/contains a secret/);
   assert.equal(fs.existsSync(path.join(runDir,'candidate/out/product.py')),false);
   assert.equal(fs.readFileSync(path.join(runDir,'run.json'),'utf8').includes(secret),false);
+});
+
+test('assembly runner archives hash-bound context index and pages with legacy child inputs',async t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'bench-assembly-context-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const f=fixture(root),context=addContext(f),cli=path.join(root,'cad-code-multi');mockCadCodeMulti(cli);
+  const {runDir,run}=await stageAssemblyRun({projectPath:f.project,outRoot:path.join(root,'runs'),cadCodeMulti:cli});
+  assert.equal(run.status,'staged');
+  for(const name of [context.index,context.page,'parts/part-000/model.py','parts/part-000/target.ir.jsonl']){
+    const saved=path.join(runDir,'source/input',name);
+    assert.equal(fileSha(saved),fileSha(path.join(context.input,name)));
+    assert.ok(run.snapshots.some(row=>row.path==='source/input/'+name&&row.sha256===fileSha(saved)));
+  }
+});
+
+test('assembly context archive rejects changed, unmanifested and escaped pages',t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'bench-assembly-context-invalid-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const f=fixture(root),c=addContext(f),project=loadAssemblyProject(f.project),pagePath=path.join(c.input,c.page);
+  fs.appendFileSync(pagePath,' ');
+  assert.throws(()=>assemblyInputSummary(project,f.attempt),/context asset hash mismatch/);
+  c.manifest.files[1].sha256=fileSha(pagePath);
+  c.manifest.files=c.manifest.files.slice(0,1);write(c.manifestPath,JSON.stringify(c.manifest));
+  assert.throws(()=>assemblyInputSummary(project,f.attempt),/page is missing from the file manifest/);
+  c.manifest.files.push({path:'../../outside.json',role:'assembly_part_index_page',sha256:'bad'});
+  write(c.manifestPath,JSON.stringify(c.manifest));
+  assert.throws(()=>assemblyInputSummary(project,f.attempt),/escapes the input snapshot/);
 });
